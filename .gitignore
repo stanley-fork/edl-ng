@@ -482,3 +482,8 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Nix build artifacts
+/*-source
+/outputs
+/result
