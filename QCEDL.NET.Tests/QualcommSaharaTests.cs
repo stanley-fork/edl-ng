@@ -188,8 +188,8 @@ public sealed class QualcommSaharaTests
         var responses = new Queue<byte[]>(
         [
             QualcommSahara.BuildCommandPacket(QualcommSaharaCommand.Hello, new byte[40]),
-            QualcommSahara.BuildCommandPacket(QualcommSaharaCommand.EndImageTx, new byte[8]),
-            QualcommSahara.BuildCommandPacket(QualcommSaharaCommand.DoneResponse, new byte[4])
+            BuildEndImageTxPacket(13, 0),
+            BuildDoneResponsePacket(1)
         ]);
         using var transport = new SaharaRecordingTransport(responses);
         var sahara = new QualcommSahara(transport);
@@ -209,6 +209,96 @@ public sealed class QualcommSaharaTests
         {
             File.Delete(programmerPath);
         }
+    }
+
+    [Fact]
+    public void SendImageRejectsFailedEndImageTxWithoutSendingDone()
+    {
+        var responses = new Queue<byte[]>(
+        [
+            QualcommSahara.BuildCommandPacket(QualcommSaharaCommand.Hello, new byte[40]),
+            BuildEndImageTxPacket(13, 0x25)
+        ]);
+        using var transport = new SaharaRecordingTransport(responses);
+        var sahara = new QualcommSahara(transport);
+        var programmerPath = Path.GetTempFileName();
+
+        try
+        {
+            Assert.False(sahara.SendImage(programmerPath));
+            Assert.Equal([QualcommSaharaCommand.HelloResponse], transport.SentCommands);
+            Assert.Empty(responses);
+        }
+        finally
+        {
+            File.Delete(programmerPath);
+        }
+    }
+
+    [Fact]
+    public void SendImageSendsDoneOnlyOnceForDuplicateEndImageTx()
+    {
+        var responses = new Queue<byte[]>(
+        [
+            QualcommSahara.BuildCommandPacket(QualcommSaharaCommand.Hello, new byte[40]),
+            BuildEndImageTxPacket(13, 0),
+            BuildEndImageTxPacket(13, 0)
+        ]);
+        using var transport = new SaharaRecordingTransport(responses);
+        var sahara = new QualcommSahara(transport);
+        var programmerPath = Path.GetTempFileName();
+
+        try
+        {
+            Assert.False(sahara.SendImage(programmerPath));
+            Assert.Equal(
+                [QualcommSaharaCommand.HelloResponse, QualcommSaharaCommand.Done],
+                transport.SentCommands);
+            Assert.Empty(responses);
+        }
+        finally
+        {
+            File.Delete(programmerPath);
+        }
+    }
+
+    [Fact]
+    public void SendImageRejectsMalformedEndImageTx()
+    {
+        var responses = new Queue<byte[]>(
+        [
+            QualcommSahara.BuildCommandPacket(QualcommSaharaCommand.Hello, new byte[40]),
+            QualcommSahara.BuildCommandPacket(QualcommSaharaCommand.EndImageTx, new byte[4])
+        ]);
+        using var transport = new SaharaRecordingTransport(responses);
+        var sahara = new QualcommSahara(transport);
+        var programmerPath = Path.GetTempFileName();
+
+        try
+        {
+            Assert.False(sahara.SendImage(programmerPath));
+            Assert.Equal([QualcommSaharaCommand.HelloResponse], transport.SentCommands);
+            Assert.Empty(responses);
+        }
+        finally
+        {
+            File.Delete(programmerPath);
+        }
+    }
+
+    private static byte[] BuildEndImageTxPacket(uint imageId, uint status)
+    {
+        var payload = new byte[8];
+        BitConverter.GetBytes(imageId).CopyTo(payload, 0x00);
+        BitConverter.GetBytes(status).CopyTo(payload, 0x04);
+        return QualcommSahara.BuildCommandPacket(QualcommSaharaCommand.EndImageTx, payload);
+    }
+
+    private static byte[] BuildDoneResponsePacket(uint status)
+    {
+        return QualcommSahara.BuildCommandPacket(
+            QualcommSaharaCommand.DoneResponse,
+            BitConverter.GetBytes(status));
     }
 
     private static QualcommSaharaCommand ReadCommand(byte[] packet)
