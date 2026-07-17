@@ -28,6 +28,8 @@ internal delegate void ReadyHandler();
 
 public class QualcommSahara(IQualcommTransport transport)
 {
+    private sealed class UnexpectedSaharaPacketException(string message) : BadMessageException(message);
+
     private const uint FirehoseProgrammerImageId = 13;
     private const int SaharaPacketHeaderLength = 0x08;
     private const int EndImageTxPacketLength = 0x10;
@@ -76,6 +78,44 @@ public class QualcommSahara(IQualcommTransport transport)
     private static bool IsFirehoseXml(ReadOnlySpan<byte> packet)
     {
         return packet.StartsWith("<?xml"u8);
+    }
+
+    private static bool IsCompleteSaharaPacket(byte[] packet, QualcommSaharaCommand command)
+    {
+        return command != QualcommSaharaCommand.NoCommand &&
+               Enum.IsDefined(command) &&
+               packet.Length >= SaharaPacketHeaderLength &&
+               ByteOperations.ReadUInt32(packet, 0x04) == packet.Length;
+    }
+
+    private static string DescribeUnexpectedHandshakePacket(
+        byte[] packet,
+        QualcommSaharaCommand command,
+        string expectedCommand)
+    {
+        if (command == QualcommSaharaCommand.EndImageTx && packet.Length == EndImageTxPacketLength)
+        {
+            var imageId = ByteOperations.ReadUInt32(packet, 0x08);
+            var status = ByteOperations.ReadUInt32(packet, 0x0C);
+            return $"Expected Sahara {expectedCommand}, received {command} " +
+                   $"(Image ID {imageId}, Status {DescribeSaharaStatus(status)}).";
+        }
+
+        return $"Expected Sahara {expectedCommand}, received {command}.";
+    }
+
+    private static void ThrowUnexpectedHandshakePacket(
+        byte[] packet,
+        QualcommSaharaCommand command,
+        string expectedCommand)
+    {
+        var message = DescribeUnexpectedHandshakePacket(packet, command, expectedCommand);
+        if (IsCompleteSaharaPacket(packet, command))
+        {
+            throw new UnexpectedSaharaPacketException(message);
+        }
+
+        throw new BadMessageException(message);
     }
 
     private static QualcommSaharaCommand ValidateAndLogPacket(byte[] packet)
@@ -246,7 +286,7 @@ public class QualcommSahara(IQualcommTransport transport)
 
             if (command != QualcommSaharaCommand.Hello)
             {
-                throw new BadMessageException($"Expected Sahara HELLO, received {command}.");
+                ThrowUnexpectedHandshakePacket(packet, command, "HELLO");
             }
 
             if (packet.Length < 0x0C)
@@ -273,11 +313,16 @@ public class QualcommSahara(IQualcommTransport transport)
             var responseId = (QualcommSaharaCommand)ByteOperations.ReadUInt32(ready, 0);
             if (responseId != QualcommSaharaCommand.CommandReady)
             {
-                throw new BadMessageException($"Expected Sahara COMMAND_READY, received {responseId}.");
+                ThrowUnexpectedHandshakePacket(ready, responseId, "COMMAND_READY");
             }
 
             IsCommandModeReady = true;
             return QualcommSaharaHandshakeResult.Sahara;
+        }
+        catch (UnexpectedSaharaPacketException ex)
+        {
+            LibraryLogger.Error($"Handshake failed: {ex.Message}");
+            return QualcommSaharaHandshakeResult.UnexpectedSaharaPacket;
         }
         catch (Exception ex)
         {

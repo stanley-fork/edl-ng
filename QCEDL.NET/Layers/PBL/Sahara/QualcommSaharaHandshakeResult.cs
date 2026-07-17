@@ -4,5 +4,6 @@ public enum QualcommSaharaHandshakeResult
 {
     Failed,
     Sahara,
-    Firehose
+    Firehose,
+    UnexpectedSaharaPacket
 }

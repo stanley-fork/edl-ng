@@ -130,6 +130,41 @@ public sealed class QualcommSaharaTests
     }
 
     [Fact]
+    public void ProbeCommandModeTreatsEndImageTxAsTerminalSaharaResponse()
+    {
+        var responses = new Queue<byte[]>(
+        [
+            BuildEndImageTxPacket(13, 1)
+        ]);
+        using var transport = new SaharaRecordingTransport(responses, initialReadTimeouts: 1);
+        var sahara = new QualcommSahara(transport);
+
+        var result = sahara.ProbeCommandMode();
+
+        Assert.Equal(QualcommSaharaHandshakeResult.UnexpectedSaharaPacket, result);
+        Assert.Equal([QualcommSaharaCommand.HelloResponse], transport.SentCommands);
+        Assert.Empty(responses);
+    }
+
+    [Fact]
+    public void ProbeCommandModeTreatsEndImageTxAfterHelloAsTerminalSaharaResponse()
+    {
+        var responses = new Queue<byte[]>(
+        [
+            BuildEndImageTxPacket(13, 1)
+        ]);
+        using var transport = new SaharaRecordingTransport(responses);
+        var sahara = new QualcommSahara(transport);
+        var hello = QualcommSahara.BuildCommandPacket(QualcommSaharaCommand.Hello, new byte[40]);
+
+        var result = sahara.ProbeCommandMode(hello);
+
+        Assert.Equal(QualcommSaharaHandshakeResult.UnexpectedSaharaPacket, result);
+        Assert.Equal([QualcommSaharaCommand.HelloResponse], transport.SentCommands);
+        Assert.Empty(responses);
+    }
+
+    [Fact]
     public void GetV3ChipInfoRejectsOlderProtocolWithoutIo()
     {
         var responses = new Queue<byte[]>();

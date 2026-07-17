@@ -344,6 +344,13 @@ internal sealed class EdlManager(GlobalOptionsBinder globalOptions) : IDisposabl
                     Logging.Log("Discarded HELLO recovery received Firehose XML. Detected Mode: Firehose");
                     detectedMode = DeviceMode.Firehose;
                 }
+                else if (handshakeResult == QualcommSaharaHandshakeResult.UnexpectedSaharaPacket)
+                {
+                    Logging.Log(
+                        "Discarded HELLO recovery received an unexpected Sahara packet. Aborting mode detection without sending other protocol probes.",
+                        LogLevel.Error);
+                    detectedMode = DeviceMode.Error;
+                }
                 else
                 {
                     Logging.Log("Discarded HELLO recovery was inconclusive.", LogLevel.Debug);
@@ -441,6 +448,13 @@ internal sealed class EdlManager(GlobalOptionsBinder globalOptions) : IDisposabl
                         {
                             Logging.Log("Sahara probe received Firehose XML. Detected Mode: Firehose");
                             detectedMode = DeviceMode.Firehose;
+                        }
+                        else if (handshakeResult == QualcommSaharaHandshakeResult.UnexpectedSaharaPacket)
+                        {
+                            Logging.Log(
+                                "Full Sahara handshake received an unexpected Sahara packet. Aborting mode detection without sending other protocol probes.",
+                                LogLevel.Error);
+                            detectedMode = DeviceMode.Error;
                         }
                         else
                         {
